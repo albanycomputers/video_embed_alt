@@ -1,0 +1,515 @@
+<?php
+
+/**
+ * @file
+ * Adds Rumble and BitChute to Video Embed Field.
+ *
+ * Also provides a click-to-load player formatter that follows the reader's
+ * EU Cookie Compliance choice, and fills an image field from the video's
+ * thumbnail, insisting on an upload when no thumbnail can be fetched.
+ */
+
+// video_embed_field calls the handler callbacks by name, so they must be
+// defined whenever this module is loaded.
+module_load_include('inc', 'video_embed_alt', 'video_embed_alt.providers');
+
+/**
+ * Implements hook_permission().
+ */
+function video_embed_alt_permission() {
+  return array(
+    'administer video_embed_alt' => array(
+      'title' => t('Administer Rumble and BitChute embeds'),
+      'description' => t('Change the embed addresses and lookup services. Every Rumble and BitChute player on the site is built from these settings.'),
+      'restrict access' => TRUE,
+    ),
+  );
+}
+
+/**
+ * Implements hook_menu().
+ */
+function video_embed_alt_menu() {
+  $items['admin/config/media/video-embed-alt'] = array(
+    'title' => 'Rumble and BitChute embeds',
+    'description' => 'Embed addresses and lookup services for Rumble and BitChute videos.',
+    'page callback' => 'backdrop_get_form',
+    'page arguments' => array('video_embed_alt_settings_form'),
+    'access arguments' => array('administer video_embed_alt'),
+    'file' => 'video_embed_alt.admin.inc',
+  );
+  return $items;
+}
+
+/**
+ * Implements hook_config_info().
+ */
+function video_embed_alt_config_info() {
+  $prefixes['video_embed_alt.settings'] = array(
+    'label' => t('Rumble and BitChute embed settings'),
+    'group' => t('Configuration'),
+  );
+  return $prefixes;
+}
+
+/**
+ * Implements hook_video_embed_handler_info().
+ */
+function video_embed_alt_video_embed_handler_info() {
+  $settings = video_embed_alt_settings();
+  $handlers = array();
+  foreach (video_embed_alt_providers() as $name => $title) {
+    $handlers[$name] = array(
+      'title' => $title,
+      'function' => 'video_embed_alt_handle_' . $name,
+      'thumbnail_function' => 'video_embed_alt_handle_thumbnail',
+      'data_function' => 'video_embed_alt_handle_data',
+      'domains' => $settings[$name . '_domains'],
+      // No player options: the player is always responsive 16:9, so nothing
+      // appears for these providers in video styles.
+      'defaults' => array(),
+    );
+  }
+  return $handlers;
+}
+
+/**
+ * Implements hook_field_widget_form_alter().
+ *
+ * Lets the video URL box take a page link, a share link or embed code for
+ * Rumble and BitChute, and rewrites it to the canonical URL before
+ * video_embed_field's own validation, which only understands plain URLs.
+ */
+function video_embed_alt_field_widget_form_alter(&$element, &$form_state, $context) {
+  if ($context['instance']['widget']['type'] !== 'video_embed_field_video' || !isset($element['video_url'])) {
+    return;
+  }
+  if (!array_intersect(array_keys(video_embed_alt_providers()), video_embed_alt_allowed_providers($context['instance']))) {
+    return;
+  }
+
+  // Embed code is longer than a URL. What is stored is the short canonical
+  // URL, which fits the field's 512-character column.
+  $element['video_url']['#maxlength'] = 1024;
+  $element['video_url']['#element_validate'][] = 'video_embed_alt_video_url_validate';
+  $element['video_url']['#description'] = t('Paste the video link, or the embed code from its Share button. Rumble and BitChute links are converted to a standard address when you save.');
+}
+
+/**
+ * Element validator: resolves a Rumble or BitChute value to its canonical URL.
+ *
+ * Runs before video_embed_field's field validation, so the value it checks
+ * is already a plain URL on a known domain.
+ */
+function video_embed_alt_video_url_validate($element, &$form_state) {
+  $value = trim((string) $element['#value']);
+  if ($value === '') {
+    return;
+  }
+
+  $video = video_embed_alt_identify($value);
+  if (!$video) {
+    // Not ours: leave it to video_embed_field.
+    return;
+  }
+
+  $providers = video_embed_alt_providers();
+  $args = array('@provider' => $providers[$video['provider']]);
+  if (empty($video['id'])) {
+    form_error($element, t('That is a @provider address, but not a link to a video.', $args));
+    return;
+  }
+
+  $resolved = video_embed_alt_resolve($value);
+  if (!$resolved) {
+    form_error($element, t('Could not find that @provider video. Check the link, or try again in a few minutes.', $args));
+    return;
+  }
+
+  form_set_value($element, $resolved['url'], $form_state);
+}
+
+/**
+ * Returns the providers a video field instance accepts.
+ *
+ * @param array $instance
+ *   A video_embed_field instance.
+ *
+ * @return array
+ *   Handler names.
+ */
+function video_embed_alt_allowed_providers(array $instance) {
+  $allowed = isset($instance['settings']['allowed_providers']) ? $instance['settings']['allowed_providers'] : array();
+  return array_values(array_filter($allowed));
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter() for field_ui_field_edit_form().
+ *
+ * Adds the "fill this image field" setting to video_embed_field instances.
+ */
+function video_embed_alt_form_field_ui_field_edit_form_alter(&$form, &$form_state) {
+  $instance = $form['#instance'];
+  $field = $form['#field'];
+  if ($field['type'] !== 'video_embed_field') {
+    return;
+  }
+
+  $options = array();
+  foreach (field_info_instances($instance['entity_type'], $instance['bundle']) as $name => $other) {
+    $other_field = field_info_field($name);
+    if ($other_field && $other_field['type'] === 'image' && $other_field['cardinality'] == 1) {
+      $options[$name] = $other['label'] . ' (' . $name . ')';
+    }
+  }
+
+  $form['instance']['settings']['video_embed_alt_image_field'] = array(
+    '#type' => 'select',
+    '#title' => t('Article image from video thumbnail'),
+    '#description' => t('For Rumble and BitChute videos. When this image field is empty, the video thumbnail is copied into it on save. If no thumbnail can be fetched, the editor must upload an image before the content can be saved. Only single-value image fields are listed.'),
+    '#options' => $options,
+    '#empty_option' => t('- None -'),
+    '#default_value' => isset($instance['settings']['video_embed_alt_image_field']) ? $instance['settings']['video_embed_alt_image_field'] : '',
+    '#weight' => 13,
+  );
+}
+
+/**
+ * Lists the video fields on an entity that have an image field configured.
+ *
+ * @param string $entity_type
+ *   The entity type.
+ * @param object $entity
+ *   The entity.
+ *
+ * @return array
+ *   Image field names, keyed by video field name.
+ */
+function video_embed_alt_image_pairs($entity_type, $entity) {
+  try {
+    list(, , $bundle) = entity_extract_ids($entity_type, $entity);
+  }
+  catch (EntityMalformedException $e) {
+    return array();
+  }
+
+  $pairs = array();
+  foreach (field_info_instances($entity_type, $bundle) as $name => $instance) {
+    $image_field = isset($instance['settings']['video_embed_alt_image_field']) ? $instance['settings']['video_embed_alt_image_field'] : '';
+    if ($image_field && field_info_instance($entity_type, $image_field, $bundle)) {
+      $field = field_info_field($name);
+      if ($field && $field['type'] === 'video_embed_field') {
+        $pairs[$name] = $image_field;
+      }
+    }
+  }
+  return $pairs;
+}
+
+/**
+ * Returns the first Rumble or BitChute item of a video field.
+ *
+ * @param string $entity_type
+ *   The entity type.
+ * @param object $entity
+ *   The entity.
+ * @param string $field_name
+ *   The video field.
+ *
+ * @return array|false
+ *   The field item, or FALSE if the field holds no video from our providers.
+ */
+function video_embed_alt_first_item($entity_type, $entity, $field_name) {
+  $items = field_get_items($entity_type, $entity, $field_name);
+  foreach ((array) $items as $item) {
+    if (!empty($item['video_url']) && video_embed_alt_identify($item['video_url'])) {
+      return $item;
+    }
+  }
+  return FALSE;
+}
+
+/**
+ * Reports whether an image field on an entity holds an image.
+ *
+ * @param string $entity_type
+ *   The entity type.
+ * @param object $entity
+ *   The entity.
+ * @param string $field_name
+ *   The image field.
+ *
+ * @return bool
+ *   TRUE if at least one item has a file.
+ */
+function video_embed_alt_image_is_set($entity_type, $entity, $field_name) {
+  foreach ((array) field_get_items($entity_type, $entity, $field_name) as $item) {
+    if (!empty($item['fid'])) {
+      return TRUE;
+    }
+  }
+  return FALSE;
+}
+
+/**
+ * Implements hook_field_attach_validate().
+ *
+ * Refuses the save when a Rumble or BitChute video has no thumbnail and the
+ * configured image field is empty. Done as a validation error rather than by
+ * switching the image field to #required, which would also demand an image
+ * when a thumbnail is available.
+ */
+function video_embed_alt_field_attach_validate($entity_type, $entity, &$errors) {
+  foreach (video_embed_alt_image_pairs($entity_type, $entity) as $video_field => $image_field) {
+    $item = video_embed_alt_first_item($entity_type, $entity, $video_field);
+    if (!$item || video_embed_alt_image_is_set($entity_type, $entity, $image_field)) {
+      continue;
+    }
+    $resolved = video_embed_alt_resolve($item['video_url']);
+    // An unresolvable link has already been reported on the video field.
+    if (!$resolved || !empty($resolved['thumbnail_url'])) {
+      continue;
+    }
+
+    $providers = video_embed_alt_providers();
+    $langcode = field_language($entity_type, $entity, $image_field);
+    $errors[$image_field][$langcode][0][] = array(
+      'error' => 'video_embed_alt_no_thumbnail',
+      'message' => t('Could not fetch a thumbnail from @provider. Please upload an image.', array('@provider' => $providers[$resolved['provider']])),
+    );
+  }
+}
+
+/**
+ * Implements hook_field_attach_presave().
+ *
+ * Copies the thumbnail video_embed_field has just downloaded into the empty
+ * image field, as a managed file. This runs after every field type's own
+ * presave, including image_field_presave(), so the dimensions are set here.
+ */
+function video_embed_alt_field_attach_presave($entity_type, $entity) {
+  foreach (video_embed_alt_image_pairs($entity_type, $entity) as $video_field => $image_field) {
+    $item = video_embed_alt_first_item($entity_type, $entity, $video_field);
+    if (!$item || empty($item['thumbnail_path']) || video_embed_alt_image_is_set($entity_type, $entity, $image_field)) {
+      continue;
+    }
+    if (!file_exists($item['thumbnail_path'])) {
+      continue;
+    }
+
+    list(, , $bundle) = entity_extract_ids($entity_type, $entity);
+    $field = field_info_field($image_field);
+    $instance = field_info_instance($entity_type, $image_field, $bundle);
+    $directory = file_field_widget_uri($field, $instance, array($entity_type => $entity));
+    if (!file_prepare_directory($directory, FILE_CREATE_DIRECTORY | FILE_MODIFY_PERMISSIONS)) {
+      watchdog('video_embed_alt', 'Could not create %dir for a video thumbnail.', array('%dir' => $directory), WATCHDOG_ERROR);
+      continue;
+    }
+
+    $data = file_get_contents($item['thumbnail_path']);
+    $file = $data !== FALSE ? file_save_data($data, $directory . '/' . backdrop_basename($item['thumbnail_path'])) : FALSE;
+    if (!$file) {
+      watchdog('video_embed_alt', 'Could not copy the video thumbnail %path.', array('%path' => $item['thumbnail_path']), WATCHDOG_ERROR);
+      continue;
+    }
+
+    $video_data = !empty($item['video_data']) ? unserialize($item['video_data'], array('allowed_classes' => FALSE)) : array();
+    $image = array(
+      'fid' => $file->fid,
+      'alt' => isset($video_data['title']) ? truncate_utf8($video_data['title'], 512) : '',
+      'title' => '',
+    );
+    $info = image_get_info($file->uri);
+    if ($info) {
+      $image['width'] = $info['width'];
+      $image['height'] = $info['height'];
+    }
+    $langcode = field_language($entity_type, $entity, $image_field);
+    $entity->{$image_field}[$langcode] = array($image);
+  }
+}
+
+/**
+ * Implements hook_field_formatter_info().
+ */
+function video_embed_alt_field_formatter_info() {
+  return array(
+    'video_embed_alt_player' => array(
+      'label' => t('Video player, click-to-load'),
+      'field types' => array('video_embed_field'),
+      'settings' => array(
+        'load_mode' => 'consent',
+        'video_style' => 'normal',
+      ),
+    ),
+  );
+}
+
+/**
+ * Returns the load mode options.
+ *
+ * @return array
+ *   Labels keyed by mode.
+ */
+function video_embed_alt_load_modes() {
+  return array(
+    'consent' => t('When cookies are accepted, otherwise click-to-load'),
+    'click' => t('Always click-to-load'),
+    'immediate' => t('Immediately'),
+  );
+}
+
+/**
+ * Implements hook_field_formatter_settings_form().
+ */
+function video_embed_alt_field_formatter_settings_form($field, $instance, $view_mode, $form, &$form_state) {
+  $settings = $instance['display'][$view_mode]['settings'];
+
+  $element['load_mode'] = array(
+    '#type' => 'radios',
+    '#title' => t('Load the player'),
+    '#options' => video_embed_alt_load_modes(),
+    '#default_value' => $settings['load_mode'],
+    '#description' => t('Video sites set their own cookies as soon as the player loads. The first option follows the reader\'s answer to the EU Cookie Compliance banner; without that module it behaves as click-to-load.'),
+  );
+  $element['video_style'] = array(
+    '#type' => 'select',
+    '#title' => t('Video style'),
+    '#options' => video_embed_field_video_style_options(FALSE),
+    '#default_value' => $settings['video_style'],
+    '#description' => t('Used by other providers, such as YouTube. Rumble and BitChute are always responsive 16:9.'),
+  );
+  return $element;
+}
+
+/**
+ * Implements hook_field_formatter_settings_summary().
+ */
+function video_embed_alt_field_formatter_settings_summary($field, $instance, $view_mode) {
+  $settings = $instance['display'][$view_mode]['settings'];
+  $modes = video_embed_alt_load_modes();
+  return t('Load: @mode', array('@mode' => isset($modes[$settings['load_mode']]) ? $modes[$settings['load_mode']] : $settings['load_mode']));
+}
+
+/**
+ * Implements hook_field_formatter_view().
+ */
+function video_embed_alt_field_formatter_view($entity_type, $entity, $field, $instance, $langcode, $items, $display) {
+  $element = array();
+  $settings = $display['settings'];
+
+  foreach ($items as $delta => $item) {
+    $player = theme('video_embed_field_embed_code', array(
+      'url' => $item['video_url'],
+      'style' => $settings['video_style'],
+    ));
+
+    if ($settings['load_mode'] === 'immediate') {
+      $element[$delta] = array(
+        '#markup' => $player,
+        '#attached' => array(
+          'css' => array(backdrop_get_path('module', 'video_embed_alt') . '/css/video_embed_alt.css'),
+        ),
+      );
+      continue;
+    }
+
+    $element[$delta] = array(
+      '#theme' => 'video_embed_alt_card',
+      '#item' => $item,
+      '#player' => $player,
+      '#load_mode' => $settings['load_mode'],
+      '#attached' => array(
+        'css' => array(backdrop_get_path('module', 'video_embed_alt') . '/css/video_embed_alt.css'),
+        'js' => array(backdrop_get_path('module', 'video_embed_alt') . '/js/video_embed_alt.js'),
+      ),
+    );
+  }
+  return $element;
+}
+
+/**
+ * Implements hook_theme().
+ */
+function video_embed_alt_theme() {
+  return array(
+    'video_embed_alt_card' => array(
+      'variables' => array('item' => array(), 'player' => '', 'load_mode' => 'consent'),
+    ),
+  );
+}
+
+/**
+ * Returns HTML for a click-to-load video card.
+ *
+ * The player markup is held in a <template>, which the browser parses but
+ * does not render, so no request reaches the provider until the script moves
+ * it into the page. The thumbnail is the local copy video_embed_field
+ * downloaded on save, so showing it contacts nobody either.
+ *
+ * @param array $variables
+ *   An associative array containing:
+ *   - item: the video_embed_field item.
+ *   - player: the player markup, built by the provider's handler.
+ *   - load_mode: 'consent' or 'click'.
+ *
+ * @return string
+ *   Rendered HTML.
+ *
+ * @ingroup themeable
+ */
+function theme_video_embed_alt_card($variables) {
+  $item = $variables['item'];
+  $data = !empty($item['video_data']) ? unserialize($item['video_data'], array('allowed_classes' => FALSE)) : array();
+  $data = is_array($data) ? $data : array();
+
+  $handler = video_embed_get_handler($item['video_url']);
+  $provider = $handler ? $handler['title'] : t('the video site');
+  $title = !empty($data['title']) ? $data['title'] : '';
+  $link = !empty($data['link']) ? $data['link'] : $item['video_url'];
+  // Other providers' stored URLs are only as clean as video_embed_field made
+  // them; never link anything that is not plainly http(s).
+  if (!preg_match('#^https?://#i', $link)) {
+    $link = '';
+  }
+  $args = array('@provider' => $provider);
+
+  $output = '<div' . backdrop_attributes(array(
+    'class' => array('vea-card', 'vea-card--pending'),
+    'data-vea-mode' => $variables['load_mode'],
+    // For the script's consent messages, which depend on the reader's
+    // answer to the cookie banner and so cannot be chosen here.
+    'data-vea-provider' => $provider,
+  )) . '>';
+
+  $output .= '<div class="vea-card__stage">';
+  if (!empty($item['thumbnail_path'])) {
+    $output .= theme('image', array(
+      'uri' => $item['thumbnail_path'],
+      'alt' => '',
+      'attributes' => array('class' => array('vea-card__thumb')),
+    ));
+  }
+  // A real button, reachable by keyboard; the title makes each one distinct
+  // when a page carries several videos.
+  $label = $title !== '' ? t('Play video: @title', array('@title' => $title)) : t('Play video');
+  $output .= '<button type="button" class="vea-card__play" aria-label="' . check_plain($label) . '"><span class="vea-card__icon" aria-hidden="true"></span></button>';
+  if ($title !== '') {
+    $output .= '<p class="vea-card__title">' . check_plain($title) . '</p>';
+  }
+  $output .= '</div>';
+
+  $output .= '<p class="vea-card__note" aria-live="polite">' . t('Plays from @provider, which may set third-party cookies.', $args) . '</p>';
+  // Always present, so the video is reachable without JavaScript and after
+  // the player has loaded.
+  if ($link !== '') {
+    $output .= '<p class="vea-card__fallback">' . l(t('Watch on @provider', $args), $link, array(
+      'external' => TRUE,
+      'attributes' => array('rel' => 'noopener', 'target' => '_blank'),
+    )) . '</p>';
+  }
+  $output .= '<template class="vea-card__player">' . $variables['player'] . '</template>';
+  $output .= '</div>';
+
+  return $output;
+}

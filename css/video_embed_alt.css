@@ -1,0 +1,98 @@
+/**
+ * @file
+ * Responsive player and click-to-load card for Video Embed Alt.
+ */
+
+/* 16:9 box the player fills, at any column width. */
+.vea-frame,
+.vea-card__stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: #111;
+}
+.vea-frame iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.vea-card {
+  margin: 0 0 1em;
+}
+.vea-card__thumb {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* The whole stage is the button's target, so a click anywhere plays. */
+.vea-card__play {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.vea-card__icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 72px;
+  height: 72px;
+  margin: -36px 0 0 -36px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.7);
+  transition: background-color 0.15s;
+}
+.vea-card__icon::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  margin: -14px 0 0 -8px;
+  border-style: solid;
+  border-width: 14px 0 14px 24px;
+  border-color: transparent transparent transparent #fff;
+}
+.vea-card__play:hover .vea-card__icon,
+.vea-card__play:focus .vea-card__icon {
+  background: rgba(200, 0, 0, 0.9);
+}
+.vea-card__play:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: -6px;
+}
+
+.vea-card__title {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  margin: 0;
+  padding: 0.5em 0.75em;
+  color: #fff;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
+  pointer-events: none;
+}
+
+.vea-card__note,
+.vea-card__fallback {
+  margin: 0.4em 0 0;
+  font-size: 0.875em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vea-card__icon {
+    transition: none;
+  }
+}

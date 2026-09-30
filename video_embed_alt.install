@@ -1,0 +1,29 @@
+<?php
+
+/**
+ * @file
+ * Install and uninstall functions for Video Embed Alt.
+ */
+
+/**
+ * Implements hook_enable().
+ */
+function video_embed_alt_enable() {
+  // video_embed_field caches its provider list permanently, so Rumble and
+  // BitChute would not appear until the next full cache flush.
+  cache_clear_all('video_embed_field_handlers', 'cache');
+}
+
+/**
+ * Implements hook_disable().
+ */
+function video_embed_alt_disable() {
+  cache_clear_all('video_embed_field_handlers', 'cache');
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function video_embed_alt_uninstall() {
+  config('video_embed_alt.settings')->delete();
+}

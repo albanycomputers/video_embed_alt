@@ -1,0 +1,8 @@
+name = Video Embed Alt
+description = Adds Rumble and BitChute to Video Embed Field, with a consent-aware click-to-load player and automatic article thumbnails.
+backdrop = 1.x
+type = module
+package = Fields
+php = 8.0
+dependencies[] = video_embed_field
+configure = admin/config/media/video-embed-alt

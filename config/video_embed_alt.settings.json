@@ -1,0 +1,15 @@
+{
+    "_config_name": "video_embed_alt.settings",
+    "rumble_domains": [
+        "rumble.com"
+    ],
+    "rumble_embed_template": "https://rumble.com/embed/{id}/",
+    "rumble_oembed_endpoint": "https://rumble.com/api/Media/oembed.json",
+    "bitchute_domains": [
+        "bitchute.com",
+        "old.bitchute.com"
+    ],
+    "bitchute_embed_template": "https://www.bitchute.com/embed/{id}/",
+    "bitchute_video_template": "https://www.bitchute.com/video/{id}/",
+    "bitchute_api_endpoint": "https://api.bitchute.com/api/beta9/video"
+}
