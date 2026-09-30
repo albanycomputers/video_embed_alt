@@ -16,6 +16,13 @@ Adds **Rumble** and **BitChute** to
 - EU Cookie Compliance is optional. Without it, the consent-aware mode
   behaves as plain click-to-load.
 
+**Cookie consent support:** the consent-aware mode currently works only with
+[EU Cookie Compliance](https://backdropcms.org/project/eu_cookie_compliance).
+Other Backdrop cookie consent modules can be added on request. Please open
+an issue naming the module. With any other consent tool, videos stay
+click-to-load: readers are still protected, but videos will not load
+automatically after they accept cookies.
+
 ## What editors paste
 
 Any of these works in the Video field:
