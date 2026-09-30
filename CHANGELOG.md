@@ -15,6 +15,13 @@ First version.
   one that follows EU Cookie Compliance.
 - Consent-mode cards say why the player has not loaded: a different
   message before the reader answers the cookie banner and after declining.
+- The card says "Click to load the video, then press play": neither site
+  honours autoplay from an embed, so the second click is expected.
+- Readers who have not accepted cookies (or declined) see the cookie
+  message large over the image, above the play icon; the note below the
+  card carries the same text for screen readers.
+- No thumbnail flash for readers who have already accepted cookies: a small
+  script in the page head hides the card until the player replaces it.
 - Copies the video thumbnail into a chosen image field; refuses the save
   when no thumbnail is available and the image field is empty.
 - Settings page for accepted domains, embed templates and lookup addresses.

@@ -49,7 +49,9 @@
    * Explains on a consent-mode card why the player has not loaded.
    *
    * The page arrives with a neutral note, because cached pages are the same
-   * for every reader; the answer to the banner is only known here.
+   * for every reader; the answer to the banner is only known here. The
+   * message is shown large over the image, and also written into the note
+   * below, which is then visually hidden, so screen readers hear it once.
    *
    * @param {jQuery} $card
    *   A pending consent-mode card.
@@ -57,12 +59,19 @@
   function explainConsent($card) {
     var args = { '@provider': $card.attr('data-vea-provider') };
     var answer = consentAnswer();
+    var text = '';
     if (answer === 'unanswered') {
-      $card.find('.vea-card__note').text(Backdrop.t('This video is from @provider, which sets third-party cookies. Accept cookies to load videos automatically, or press play to load just this one.', args));
+      text = Backdrop.t('This video is from @provider, which sets third-party cookies. Accept cookies to load videos automatically, or click the video to load just this one.', args);
     }
     else if (answer === 'declined') {
-      $card.find('.vea-card__note').text(Backdrop.t('You have declined cookies, so this video has not loaded. Press play to load it from @provider, which may set third-party cookies.', args));
+      text = Backdrop.t('You have declined cookies, so this video has not loaded. Click the video to load it from @provider, which may set third-party cookies.', args);
     }
+    if (!text) {
+      return;
+    }
+    $card.addClass('vea-card--explained');
+    $card.find('.vea-card__message').text(text);
+    $card.find('.vea-card__note').text(text).addClass('element-invisible');
   }
 
   /**
@@ -117,6 +126,11 @@
 
       if (hasConsent()) {
         activateConsentCards();
+      }
+      else {
+        // The head script guessed from the cookie alone; EU Cookie Compliance
+        // disagrees, so show the cards it hid.
+        $('html').removeClass('vea-consented');
       }
     }
   };

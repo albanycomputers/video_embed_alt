@@ -41,6 +41,7 @@
   padding: 0;
   border: 0;
   background: transparent;
+  font-family: inherit;
   cursor: pointer;
 }
 .vea-card__icon {
@@ -71,6 +72,68 @@
 .vea-card__play:focus-visible {
   outline: 3px solid #fff;
   outline-offset: -6px;
+}
+
+.vea-card__hint {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  /* Above the icon: below it collides with a two-line title on a phone. */
+  margin-top: -46px;
+  padding: 0.25em 0.75em;
+  border-radius: 1em;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.7);
+  font-size: 0.9em;
+  white-space: nowrap;
+  transform: translate(-50%, -100%);
+}
+
+.vea-card__message {
+  display: none;
+}
+
+/* Cookie message over the image, for readers who have not accepted. The
+   button becomes a darkened flex column: message, then the play icon. The
+   title and small hint are dropped - three texts do not fit over a video
+   the width of a phone. */
+.vea-card--explained .vea-card__play {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75em;
+  padding: 0.75em 1.25em;
+  background: rgba(0, 0, 0, 0.65);
+}
+.vea-card--explained .vea-card__message {
+  display: block;
+  max-width: 40em;
+  color: #fff;
+  font-size: clamp(0.85rem, 2.4vw, 1.4rem);
+  font-weight: bold;
+  line-height: 1.3;
+  text-align: center;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+.vea-card--explained .vea-card__icon {
+  position: relative;
+  top: auto;
+  left: auto;
+  flex: none;
+  margin: 0;
+}
+.vea-card--explained .vea-card__hint,
+.vea-card--explained .vea-card__title {
+  display: none;
+}
+
+/* Cookies already accepted: the player replaces the card as soon as the
+   script runs, so keep the dark box and hide the preview rather than flash
+   it. Set by video_embed_alt_consent_head_script(). */
+.vea-consented .vea-card--pending[data-vea-mode="consent"] .vea-card__stage > *,
+.vea-consented .vea-card--pending[data-vea-mode="consent"] .vea-card__note {
+  visibility: hidden;
 }
 
 .vea-card__title {

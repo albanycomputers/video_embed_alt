@@ -424,8 +424,34 @@ function video_embed_alt_field_formatter_view($entity_type, $entity, $field, $in
         'js' => array(backdrop_get_path('module', 'video_embed_alt') . '/js/video_embed_alt.js'),
       ),
     );
+    if ($settings['load_mode'] === 'consent' && module_exists('eu_cookie_compliance')) {
+      $element[$delta]['#attached']['js'][] = array(
+        'data' => video_embed_alt_consent_head_script(),
+        'type' => 'inline',
+        'scope' => 'header',
+        'weight' => -100,
+      );
+    }
   }
   return $element;
+}
+
+/**
+ * Returns a script that marks the page before it is drawn if cookies are accepted.
+ *
+ * Without it a reader who has already accepted sees the thumbnail card for a
+ * moment before the behaviour swaps in the player. The card is sent to
+ * everyone, because cached pages are the same for every reader, so the only
+ * way to avoid the flash is to decide in the <head>, before the body renders.
+ * It reads EU Cookie Compliance's cookie directly, since that module's script
+ * has not loaded yet; the behaviour checks again properly and undoes the mark
+ * if it was wrong.
+ *
+ * @return string
+ *   Inline JavaScript.
+ */
+function video_embed_alt_consent_head_script() {
+  return "(function () { try { var name = window.eu_cookie_compliance_cookie_name || 'cookie-agreed'; var c = document.cookie.split('; '); for (var i = 0; i < c.length; i++) { var p = c[i].split('='); if (p[0] === name && (p[1] === '1' || p[1] === '2')) { document.documentElement.className += ' vea-consented'; } } } catch (e) {} })();";
 }
 
 /**
@@ -492,8 +518,17 @@ function theme_video_embed_alt_card($variables) {
   }
   // A real button, reachable by keyboard; the title makes each one distinct
   // when a page carries several videos.
-  $label = $title !== '' ? t('Play video: @title', array('@title' => $title)) : t('Play video');
-  $output .= '<button type="button" class="vea-card__play" aria-label="' . check_plain($label) . '"><span class="vea-card__icon" aria-hidden="true"></span></button>';
+  // "Load", not "play": Rumble and BitChute ignore every autoplay request
+  // from an embed, so the reader presses play again in their player. Saying
+  // so up front stops the second click looking like a failure.
+  $label = $title !== '' ? t('Load video: @title', array('@title' => $title)) : t('Load video');
+  $output .= '<button type="button" class="vea-card__play" aria-label="' . check_plain($label) . '">';
+  // Filled by the script with the cookie message, which depends on the
+  // reader's answer to the banner. Hidden from screen readers: the same
+  // text goes into the note below the card.
+  $output .= '<span class="vea-card__message" aria-hidden="true"></span>';
+  $output .= '<span class="vea-card__icon" aria-hidden="true"></span>';
+  $output .= '<span class="vea-card__hint" aria-hidden="true">' . t('Click to load the video, then press play') . '</span></button>';
   if ($title !== '') {
     $output .= '<p class="vea-card__title">' . check_plain($title) . '</p>';
   }
