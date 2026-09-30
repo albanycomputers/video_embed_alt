@@ -345,7 +345,24 @@ function video_embed_alt_http_json($url, array $options = array()) {
 }
 
 /**
- * Accepts a thumbnail URL only if it is a plain https URL.
+ * Lists the image types a thumbnail may be.
+ *
+ * SVG is deliberately absent: it can carry script, and image_get_info()
+ * recognises it.
+ *
+ * @return array
+ *   Lowercase extensions.
+ */
+function video_embed_alt_thumbnail_extensions() {
+  return array('jpg', 'jpeg', 'png', 'gif', 'webp');
+}
+
+/**
+ * Accepts a thumbnail URL only if it is an https URL to an image file.
+ *
+ * video_embed_field names the file it downloads after the URL's extension,
+ * so a URL ending in ".php" from a compromised or changed provider API would
+ * otherwise land in public files under that name.
  *
  * @param mixed $url
  *   The value a provider returned.
@@ -355,6 +372,10 @@ function video_embed_alt_http_json($url, array $options = array()) {
  */
 function video_embed_alt_clean_thumbnail($url) {
   if (!is_string($url) || !filter_var($url, FILTER_VALIDATE_URL) || stripos($url, 'https://') !== 0) {
+    return '';
+  }
+  $extension = strtolower(pathinfo((string) parse_url($url, PHP_URL_PATH), PATHINFO_EXTENSION));
+  if (!in_array($extension, video_embed_alt_thumbnail_extensions(), TRUE)) {
     return '';
   }
   return $url;

@@ -22,6 +22,11 @@ First version.
   card carries the same text for screen readers.
 - No thumbnail flash for readers who have already accepted cookies: a small
   script in the page head hides the card until the player replaces it.
+- Security: thumbnail URLs are accepted only if they end in .jpg, .jpeg,
+  .png, .gif or .webp (video_embed_field names its download after the URL),
+  and a thumbnail is copied into the image field only if its content really
+  is one of those types; the copy is named from the real type. SVG is never
+  accepted.
 - Copies the video thumbnail into a chosen image field; refuses the save
   when no thumbnail is available and the image field is empty.
 - Settings page for accepted domains, embed templates and lookup addresses.

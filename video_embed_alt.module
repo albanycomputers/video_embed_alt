@@ -296,6 +296,15 @@ function video_embed_alt_field_attach_presave($entity_type, $entity) {
     if (!file_exists($item['thumbnail_path'])) {
       continue;
     }
+    // Trust the file's content, not its name: it must really be one of the
+    // allowed image types, and the copy is named from what it really is.
+    $source_info = image_get_info($item['thumbnail_path']);
+    if (!$source_info || !in_array($source_info['extension'], video_embed_alt_thumbnail_extensions(), TRUE)) {
+      watchdog('video_embed_alt', 'Ignored video thumbnail %path: not a JPEG, PNG, GIF or WebP image.', array('%path' => $item['thumbnail_path']), WATCHDOG_WARNING);
+      continue;
+    }
+    $name = preg_replace('/[^A-Za-z0-9_-]/', '', pathinfo($item['thumbnail_path'], PATHINFO_FILENAME));
+    $name = ($name === '' ? 'video-thumbnail' : $name) . '.' . $source_info['extension'];
 
     list(, , $bundle) = entity_extract_ids($entity_type, $entity);
     $field = field_info_field($image_field);
@@ -307,7 +316,7 @@ function video_embed_alt_field_attach_presave($entity_type, $entity) {
     }
 
     $data = file_get_contents($item['thumbnail_path']);
-    $file = $data !== FALSE ? file_save_data($data, $directory . '/' . backdrop_basename($item['thumbnail_path'])) : FALSE;
+    $file = $data !== FALSE ? file_save_data($data, $directory . '/' . $name) : FALSE;
     if (!$file) {
       watchdog('video_embed_alt', 'Could not copy the video thumbnail %path.', array('%path' => $item['thumbnail_path']), WATCHDOG_ERROR);
       continue;
